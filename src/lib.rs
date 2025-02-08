@@ -32,6 +32,7 @@ pub struct Apa102<SPI> {
     end_frame_length: u8,
     invert_end_frame: bool,
     pixel_order: PixelOrder,
+    brightness: u8,
 }
 
 /// What order to transmit pixel colors. Different Dotstars
@@ -61,6 +62,7 @@ where
             end_frame_length: 4,
             invert_end_frame: true,
             pixel_order: PixelOrder::BGR,
+            brightness: 31,
         }
     }
 
@@ -69,18 +71,26 @@ where
         end_frame_length: u8,
         invert_end_frame: bool,
         pixel_order: PixelOrder,
+        brightness: u8,
     ) -> Apa102<SPI> {
+        assert!(brightness < 32, "brightness value is limited to 5 bits");
         Self {
             spi,
             end_frame_length,
             invert_end_frame,
             pixel_order,
+            brightness,
         }
     }
 
     /// Free the owned resources consuming self
     pub fn free(self) -> SPI {
         self.spi
+    }
+
+    pub fn set_brightness(self: &mut Self, brightness: u8) {
+        assert!(brightness < 32, "brightness value is limited to 5 bits");
+        self.brightness = brightness;
     }
 }
 
@@ -97,15 +107,16 @@ where
         I: Into<Self::Color>,
     {
         self.spi.write(&[0x00, 0x00, 0x00, 0x00])?;
+        let brightness_byte = (self.brightness & 0b00011111u8) | 0b11100000;
         for item in iterator {
             let item = item.into();
             match self.pixel_order {
-                PixelOrder::RGB => self.spi.write(&[0xFF, item.r, item.g, item.b])?,
-                PixelOrder::RBG => self.spi.write(&[0xFF, item.r, item.b, item.g])?,
-                PixelOrder::GRB => self.spi.write(&[0xFF, item.g, item.r, item.b])?,
-                PixelOrder::GBR => self.spi.write(&[0xFF, item.g, item.b, item.r])?,
-                PixelOrder::BRG => self.spi.write(&[0xFF, item.b, item.r, item.g])?,
-                PixelOrder::BGR => self.spi.write(&[0xFF, item.b, item.g, item.r])?,
+                PixelOrder::RGB => self.spi.write(&[brightness_byte, item.r, item.g, item.b])?,
+                PixelOrder::RBG => self.spi.write(&[brightness_byte, item.r, item.b, item.g])?,
+                PixelOrder::GRB => self.spi.write(&[brightness_byte, item.g, item.r, item.b])?,
+                PixelOrder::GBR => self.spi.write(&[brightness_byte, item.g, item.b, item.r])?,
+                PixelOrder::BRG => self.spi.write(&[brightness_byte, item.b, item.r, item.g])?,
+                PixelOrder::BGR => self.spi.write(&[brightness_byte, item.b, item.g, item.r])?,
             }
         }
         for _ in 0..self.end_frame_length {
